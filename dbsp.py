@@ -599,7 +599,7 @@ def store_standards(imgID_list, side='blue', trace=None,
     caldir : string, default "onedstds$iidscal/"
         Directory to search for calibration standards in.
     crval : int or None (default)
-        Spectrum reference dispersion coordinate, if different from defaultpyfits
+        Spectrum reference dispersion coordinate, if different from default
         [Angstroms of central pixel]
     cdelt : int or None (default)
         Spectral dispersion, if different from default [Angstroms per pixel]
