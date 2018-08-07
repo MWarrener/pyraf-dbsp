@@ -434,10 +434,8 @@ def make_arcs_blue(slit='0.5', overwrite=False, zenith_only = True):
     iraf.imcombine.gain = det_pars['blue']['gain']
     arcs = iraf.hselect('blue????.fits', '$I', 'TURRET == "LAMPS" & APERTURE == "{aperture}" & LAMPS == "0100000"'.format(aperture=aperture), Stdout=1)
     if zenith_only:
-        try:
-            arcs = iraf.hselect(','.join(arcs), '$I', 'TURRET == "LAMPS" & APERTURE == "{aperture}" & LAMPS == "0100000" & AIRMASS < 1.01'.format(aperture=aperture), Stdout=1)
-        except:
-            pass
+        temp_arcs = iraf.hselect(','.join(arcs), '$I', 'TURRET == "LAMPS" & APERTURE == "{aperture}" & LAMPS == "0100000" & AIRMASS < 1.01'.format(aperture=aperture), Stdout=1)
+        arcs = temp_arcs if len(temp_arcs)!=0 else arcs
     if overwrite:
         iraf.delete('FeAr_{aperture}.fits'.format(aperture=aperture), 
             verify='no')
@@ -467,10 +465,8 @@ def make_arcs_red(slit='0.5', overwrite=False, zenith_only = True):
     iraf.imcombine.gain = det_pars['red']['gain']
     arcs = iraf.hselect('red????.fits', '$I', 'TURRET == "LAMPS" & APERTURE == "{aperture}" & LAMPS == "0001110"'.format(aperture=aperture), Stdout=1)
     if zenith_only:
-        try:
-            arcs = iraf.hselect(','.join(arcs), '$I', 'TURRET == "LAMPS" & APERTURE == "{aperture}" & LAMPS == "0001110" & AIRMASS < 1.01'.format(aperture=aperture), Stdout=1)
-        except:
-            pass
+        temp_arcs = iraf.hselect(','.join(arcs), '$I', 'TURRET == "LAMPS" & APERTURE == "{aperture}" & LAMPS == "0100000" & AIRMASS < 1.01'.format(aperture=aperture), Stdout=1)
+        arcs = temp_arcs if len(temp_arcs)!=0 else arcs
     if overwrite:
         iraf.delete('HeNeAr_{aperture}.fits'.format(aperture=aperture), 
             verify='no')
@@ -603,7 +599,7 @@ def store_standards(imgID_list, side='blue', trace=None,
     caldir : string, default "onedstds$iidscal/"
         Directory to search for calibration standards in.
     crval : int or None (default)
-        Spectrum reference dispersion coordinate, if different from default
+        Spectrum reference dispersion coordinate, if different from defaultpyfits
         [Angstroms of central pixel]
     cdelt : int or None (default)
         Spectral dispersion, if different from default [Angstroms per pixel]
@@ -874,7 +870,7 @@ def extract1D(imgID, side='blue', trace=None, arc=None, splot='no',
         iraf.telluric.input = rootname + '.ms.fits'
         iraf.telluric.output = ""
         iraf.telluric.sample = "6277:6288,6860:7000,7584:7678,9252:9842"
-        iraf.telluric.interactive = "no"
+        iraf.telluric.interactive = "no" 
         iraf.telluric.cal = 'norm_%s.fits' % tell_rootname
         iraf.telluric.ignoreaps = 'yes'
         iraf.telluric.xcorr = 'yes'
@@ -885,6 +881,11 @@ def extract1D(imgID, side='blue', trace=None, arc=None, splot='no',
     # measure shift with sky lines *before* fluxing to avoid floating point errors
     # measure the position and width of sky lines (do this only for exposures longer than 3 min)
     hdr = pyfits.getheader(rootname + '.fits')
+    
+    hdr2 = pyfits.getheader(arc[:-5] + '.ms.fits')
+    crval1 = hdr2['CRVAL1']
+    cdelt1 = hdr2['CDELT1']
+
     midpoint_loc = {'blue':4750,'red':7400}
     if hdr['EXPTIME'] > 120 and sky_shift:
         iraf.unlearn('scopy')
@@ -906,12 +907,18 @@ def extract1D(imgID, side='blue', trace=None, arc=None, splot='no',
             'regs':['6917 6930', '7333 7348', '7813 7830', '8422 8439', '8875 8895']}}
         
         offsets = []
-        for i in range(len(sky_lines[side]['wavelength'])):
-            iraf.fitprofs(rootname + '.2001.fits',
-                reg=sky_lines[side]['regs'][i], 
-                logfile='skyfit_{:s}_{:1d}.dat'.format(side, i), 
-                pos=BASE_DIR + '/cal/skyline_{:s}_{:1d}.dat'.format(side, i), 
-                verbose='no')
+        i=-1
+        for ii in range(len(sky_lines[side]['wavelength'])):
+            skylinewavelength=sky_lines[side]['wavelength'][ii]
+            if (skylinewavelength<=crval1) or (skylinewavelength>=crval1+2835*cdelt1):
+                pass
+            else:
+                i+=1
+                iraf.fitprofs(rootname + '.2001.fits',
+                    reg=sky_lines[side]['regs'][i], 
+                    logfile='skyfit_{:s}_{:1d}.dat'.format(side, i), 
+                    pos=BASE_DIR + '/cal/skyline_{:s}_{:1d}.dat'.format(side, i), 
+                    verbose='no')
 
         # dump useful data from skyfit?.dat (center width err_center err_width)
             os.system('fgrep -v "#" skyfit_{side:s}_{num:1d}.dat |perl -pe "s/0\.\n/0\./g;s/^ +//;s/\(/ /g;s/\)/ /g;s/ +/ /g;" |cut -d" " -f1,6,8,13 > wavelength_offset_{side:s}_{num:1d}.dat'.format(side=side, num=i))
